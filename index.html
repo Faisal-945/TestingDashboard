@@ -35,25 +35,40 @@
     return { headers, dataRows };
   }
 
-  function populateSelectors(headers) {
-    const xSelect = document.getElementById('xSelect');
-    const ySelect = document.getElementById('ySelect');
+  function isNumericColumn(dataRows, colIndex) {
+  for (let i = 0; i < Math.min(dataRows.length, 5); i++) {
+    const val = parseFloat(dataRows[i][colIndex]);
+    if (isNaN(val)) return false;
+  }
+  return true;
+}
 
-    headers.forEach((header, index) => {
-      const optionX = document.createElement('option');
-      optionX.value = index;
-      optionX.text = header;
-      xSelect.add(optionX);
+function populateSelectors(headers, dataRows) {
+  const xSelect = document.getElementById('xSelect');
+  const ySelect = document.getElementById('ySelect');
 
+  xSelect.innerHTML = '';
+  ySelect.innerHTML = '';
+
+  headers.forEach((header, index) => {
+    // X-axis: allow all columns
+    const optionX = document.createElement('option');
+    optionX.value = index;
+    optionX.text = header;
+    xSelect.add(optionX);
+
+    // Y-axis: only numeric columns
+    if (isNumericColumn(dataRows, index)) {
       const optionY = document.createElement('option');
       optionY.value = index;
       optionY.text = header;
       ySelect.add(optionY);
-    });
+    }
+  });
 
-    xSelect.selectedIndex = 0;
-    ySelect.selectedIndex = 1;
-  }
+  xSelect.selectedIndex = 0;
+  ySelect.selectedIndex = 0;
+}
 
   async function updateChart() {
     const { headers, dataRows } = await fetchData();
@@ -84,20 +99,21 @@
   }
 
   async function init() {
-    const { headers } = await fetchData();
-    populateSelectors(headers);
+  const { headers, dataRows } = await fetchData();
+  populateSelectors(headers, (await fetchData()).dataRows);
 
-    document.getElementById('xSelect').addEventListener('change', updateChart);
-    document.getElementById('ySelect').addEventListener('change', updateChart);
+  document.getElementById('xSelect').addEventListener('change', updateChart);
+  document.getElementById('ySelect').addEventListener('change', updateChart);
 
-    updateChart();
-  }
-
+  updateChart();
+}
+  
   init();
 </script>
 
 </body>
 </html>
+
 
 
 
