@@ -3,8 +3,6 @@
 <head>
   <meta charset="UTF-8">
   <title>Form Data Dashboard</title>
-
-  <!-- Chart.js -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
   <style>
@@ -17,26 +15,25 @@
       text-align: center;
     }
 
-    .dashboard-controls {
-      max-width: 1000px;
-      margin: auto;
+    .controls {
       text-align: center;
+      margin-bottom: 20px;
     }
 
-    label {
-      margin-right: 10px;
-    }
-
-    select, button {
+    select, button, input[type=range] {
+      margin: 6px;
       padding: 6px 10px;
-      margin: 8px;
+    }
+
+    .chart-wrapper {
+      max-width: 1200px;
+      margin: 30px auto;
     }
 
     .chart-container {
       width: 100%;
-      max-width: 1100px;
-      height: 500px;
-      margin: 30px auto;
+      height: 400px;
+      margin-bottom: 40px;
     }
 
     canvas {
@@ -48,119 +45,147 @@
 
 <body>
 
-  <h2>Form Data Dashboard</h2>
+<h2>Form Data Dashboard</h2>
 
-  <div class="dashboard-controls">
-    <label for="xSelect">X-axis:</label>
-    <select id="xSelect"></select>
+<div class="controls">
+  <label>X-axis:</label>
+  <select id="xSelect"></select>
 
-    <label for="ySelect">Y-axis:</label>
-    <select id="ySelect"></select>
+  <label>Y-axis:</label>
+  <select id="ySelect"></select>
 
-    <label for="chartType">Chart Type:</label>
-    <select id="chartType">
-      <option value="bar">Bar</option>
-      <option value="line">Line</option>
-    </select>
+  <label>Chart:</label>
+  <select id="chartType">
+    <option value="bar">Bar</option>
+    <option value="line">Line</option>
+  </select>
 
-    <button id="refreshBtn">Refresh Data</button>
-  </div>
+  <button id="refreshBtn">Refresh Data</button>
+  <button id="addChartBtn">Add Another Chart</button>
+</div>
 
-  <div class="chart-container">
-    <canvas id="myChart"></canvas>
-  </div>
+<div class="controls">
+  <label>Chart Height:</label>
+  <input type="range" id="sizeSlider" min="300" max="800" value="400">
+  <span id="sizeValue">400px</span>
+</div>
 
-  <script>
-    const apiUrl = "https://script.google.com/macros/s/AKfycbyn27BCQpW5oMmQHPEnr9256TTiMP449DT1cq8Uz4vXXI335XBocCS2NYsf-3lXVVG0AQ/exec";
-    let chartInstance;
+<div id="charts" class="chart-wrapper"></div>
 
-    async function fetchData() {
-      const res = await fetch(apiUrl);
-      const data = await res.json();
+<script>
+const apiUrl = "https://script.google.com/macros/s/AKfycbyn27BCQpW5oMmQHPEnr9256TTiMP449DT1cq8Uz4vXXI335XBocCS2NYsf-3lXVVG0AQ/exec";
 
-      const headers = Object.keys(data[0]);
-      const dataRows = data.map(obj => Object.values(obj));
+let charts = [];
+let chartCount = 0;
+let cachedData = null;
 
-      return { headers, dataRows };
+async function fetchData() {
+  const res = await fetch(apiUrl);
+  const data = await res.json();
+
+  const headers = Object.keys(data[0]);
+  const dataRows = data.map(obj => Object.values(obj));
+
+  cachedData = { headers, dataRows };
+  return cachedData;
+}
+
+function populateSelectors(headers) {
+  const xSelect = document.getElementById('xSelect');
+  const ySelect = document.getElementById('ySelect');
+
+  xSelect.innerHTML = '';
+  ySelect.innerHTML = '';
+
+  headers.forEach((h, i) => {
+    xSelect.add(new Option(h, i));
+    ySelect.add(new Option(h, i));
+  });
+
+  xSelect.selectedIndex = 0;
+  ySelect.selectedIndex = 1;
+}
+
+function createChart() {
+  const container = document.createElement('div');
+  container.className = 'chart-container';
+  container.style.height = document.getElementById('sizeSlider').value + 'px';
+
+  const canvas = document.createElement('canvas');
+  canvas.id = 'chart' + chartCount++;
+
+  container.appendChild(canvas);
+  document.getElementById('charts').appendChild(container);
+
+  renderChart(canvas);
+}
+
+function renderChart(canvas) {
+  const { headers, dataRows } = cachedData;
+
+  const xIndex = document.getElementById('xSelect').value;
+  const yIndex = document.getElementById('ySelect').value;
+  const type = document.getElementById('chartType').value;
+
+  const labels = dataRows.map(r => r[xIndex]);
+  const values = dataRows.map(r => parseFloat(r[yIndex]) || 0);
+
+  const chart = new Chart(canvas.getContext('2d'), {
+    type,
+    data: {
+      labels,
+      datasets: [{
+        label: headers[yIndex],
+        data: values,
+        tension: 0.3,
+        backgroundColor: 'rgba(54,162,235,0.5)',
+        borderColor: 'rgba(54,162,235,1)',
+        borderWidth: 2
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        y: { beginAtZero: true }
+      }
     }
+  });
 
-    function populateSelectors(headers) {
-      const xSelect = document.getElementById('xSelect');
-      const ySelect = document.getElementById('ySelect');
+  charts.push({ chart, container: canvas.parentElement });
+}
 
-      xSelect.innerHTML = '';
-      ySelect.innerHTML = '';
+function refreshCharts() {
+  charts.forEach(c => c.chart.destroy());
+  charts = [];
+  document.getElementById('charts').innerHTML = '';
+  createChart();
+}
 
-      headers.forEach((header, index) => {
-        const optionX = document.createElement('option');
-        optionX.value = index;
-        optionX.text = header;
-        xSelect.add(optionX);
+document.getElementById('refreshBtn').onclick = async () => {
+  await fetchData();
+  refreshCharts();
+};
 
-        const optionY = document.createElement('option');
-        optionY.value = index;
-        optionY.text = header;
-        ySelect.add(optionY);
-      });
+document.getElementById('addChartBtn').onclick = createChart;
 
-      xSelect.selectedIndex = 0;
-      ySelect.selectedIndex = 1;
-    }
+document.getElementById('chartType').onchange = refreshCharts;
+document.getElementById('xSelect').onchange = refreshCharts;
+document.getElementById('ySelect').onchange = refreshCharts;
 
-    async function updateChart() {
-      const { headers, dataRows } = await fetchData();
+document.getElementById('sizeSlider').oninput = (e) => {
+  document.getElementById('sizeValue').innerText = e.target.value + 'px';
+  charts.forEach(c => c.container.style.height = e.target.value + 'px');
+};
 
-      const xIndex = parseInt(document.getElementById('xSelect').value);
-      const yIndex = parseInt(document.getElementById('ySelect').value);
-      const chartType = document.getElementById('chartType').value;
+async function init() {
+  const { headers } = await fetchData();
+  populateSelectors(headers);
+  createChart();
+}
 
-      const labels = dataRows.map(row => row[xIndex]);
-      const values = dataRows.map(row => parseFloat(row[yIndex]) || 0);
-
-      const ctx = document.getElementById('myChart').getContext('2d');
-
-      if (chartInstance) chartInstance.destroy();
-
-      chartInstance = new Chart(ctx, {
-        type: chartType,
-        data: {
-          labels: labels,
-          datasets: [{
-            label: headers[yIndex],
-            data: values,
-            fill: chartType === 'line',
-            tension: 0.3,
-            backgroundColor: 'rgba(54, 162, 235, 0.5)',
-            borderColor: 'rgba(54, 162, 235, 1)',
-            borderWidth: 2
-          }]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          scales: {
-            y: {
-              beginAtZero: true
-            }
-          }
-        }
-      });
-    }
-
-    async function init() {
-      const { headers } = await fetchData();
-      populateSelectors(headers);
-
-      document.getElementById('xSelect').addEventListener('change', updateChart);
-      document.getElementById('ySelect').addEventListener('change', updateChart);
-      document.getElementById('chartType').addEventListener('change', updateChart);
-      document.getElementById('refreshBtn').addEventListener('click', updateChart);
-
-      updateChart();
-    }
-
-    init();
-  </script>
+init();
+</script>
 
 </body>
 </html>
