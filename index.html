@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Dynamic Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { font-family: Arial; margin: 40px; }
+    h2 { text-align: center; }
+    canvas { max-width: 800px; margin: 40px auto; display: block; }
+    select { display: block; margin: 10px auto; padding: 5px; }
+  </style>
+</head>
+<body>
+
+<h2>Form Data Dashboard</h2>
+
+<label for="xSelect">Select X-axis:</label>
+<select id="xSelect"></select>
+
+<label for="ySelect">Select Y-axis:</label>
+<select id="ySelect"></select>
+
+<canvas id="myChart"></canvas>
+
+<script>
+  const apiUrl = "https://script.google.com/macros/s/AKfycbzTPIMeAvbhpbgI1rIUSuDXohccvEqbve5RFSvXoa2iVcHa73ou38enYK5SSLTVBXXnHg/exec"; // replace with your URL
+  let chartInstance;
+
+  async function fetchData() {
+    const res = await fetch(apiUrl);
+    const data = await res.json(); // Array of objects
+    const headers = Object.keys(data[0]);
+    const dataRows = data.map(obj => Object.values(obj));
+    return { headers, dataRows };
+  }
+
+  function populateSelectors(headers) {
+    const xSelect = document.getElementById('xSelect');
+    const ySelect = document.getElementById('ySelect');
+
+    headers.forEach((header, index) => {
+      const optionX = document.createElement('option');
+      optionX.value = index;
+      optionX.text = header;
+      xSelect.add(optionX);
+
+      const optionY = document.createElement('option');
+      optionY.value = index;
+      optionY.text = header;
+      ySelect.add(optionY);
+    });
+
+    xSelect.selectedIndex = 0;
+    ySelect.selectedIndex = 1;
+  }
+
+  async function updateChart() {
+    const { headers, dataRows } = await fetchData();
+    const xIndex = parseInt(document.getElementById('xSelect').value);
+    const yIndex = parseInt(document.getElementById('ySelect').value);
+
+    const labels = dataRows.map(row => row[xIndex]);
+    const values = dataRows.map(row => parseFloat(row[yIndex]) || 0);
+
+    const ctx = document.getElementById('myChart').getContext('2d');
+
+    if(chartInstance) chartInstance.destroy();
+
+    chartInstance = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: labels,
+        datasets: [{
+          label: headers[yIndex],
+          data: values,
+          backgroundColor: 'rgba(54, 162, 235, 0.5)',
+          borderColor: 'rgba(54, 162, 235, 1)',
+          borderWidth: 1
+        }]
+      },
+      options: { responsive: true, scales: { y: { beginAtZero: true } } }
+    });
+  }
+
+  async function init() {
+    const { headers } = await fetchData();
+    populateSelectors(headers);
+
+    document.getElementById('xSelect').addEventListener('change', updateChart);
+    document.getElementById('ySelect').addEventListener('change', updateChart);
+
+    updateChart();
+  }
+
+  init();
+</script>
+
+</body>
+</html>
