@@ -1,67 +1,37 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Form Data Dashboard</title>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      margin: 40px;
-    }
-
-    h2 {
-      text-align: center;
-    }
-
-    button, select {
-      padding: 5px 8px;
-      margin: 4px;
-    }
-
-    .global-controls {
-      text-align: center;
-      margin-bottom: 20px;
-    }
-
-    .chart-box {
-      border: 1px solid #ccc;
-      padding: 10px;
-      margin: 30px 0;
-    }
-
-    .chart-controls {
-      text-align: center;
-      margin-bottom: 10px;
-    }
-
-    .chart-container {
-      width: 100%;
-      height: 400px;
-    }
-
-    canvas {
-      width: 100% !important;
-      height: 100% !important;
-    }
-  </style>
+<meta charset="UTF-8">
+<title>Independent Charts Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+body {
+  font-family: Arial, sans-serif;
+  margin: 40px;
+}
+h2 { text-align: center; }
+.global-controls { text-align: center; margin-bottom: 20px; }
+button, select, input[type=range] { margin: 4px; padding: 5px; }
+.chart-wrapper { max-width: 1200px; margin: auto; }
+.chart-box { border: 1px solid #ccc; padding: 10px; margin: 30px 0; }
+.chart-controls { text-align: center; margin-bottom: 10px; }
+.chart-container { width: 100%; height: 400px; }
+canvas { width: 100% !important; height: 100% !important; }
+</style>
 </head>
-
 <body>
 
-<h2>Form Data Dashboard</h2>
+<h2>Independent Charts Dashboard</h2>
 
 <div class="global-controls">
   <button id="addChartBtn">Add Chart</button>
   <button id="refreshBtn">Refresh Data</button>
 </div>
 
-<div id="chartArea"></div>
+<div id="chartArea" class="chart-wrapper"></div>
 
 <script>
 const apiUrl = "https://script.google.com/macros/s/AKfycbyn27BCQpW5oMmQHPEnr9256TTiMP449DT1cq8Uz4vXXI335XBocCS2NYsf-3lXVVG0AQ/exec";
-
 let cachedData = null;
 
 async function fetchData() {
@@ -73,6 +43,8 @@ async function fetchData() {
 }
 
 function createChartBox() {
+  if (!cachedData) return;
+
   const box = document.createElement("div");
   box.className = "chart-box";
 
@@ -82,31 +54,33 @@ function createChartBox() {
   const xSelect = document.createElement("select");
   const ySelect = document.createElement("select");
   const typeSelect = document.createElement("select");
+  const sizeSlider = document.createElement("input");
+  sizeSlider.type = "range";
+  sizeSlider.min = 250;
+  sizeSlider.max = 800;
+  sizeSlider.value = 400;
+  const sizeValue = document.createElement("span");
+  sizeValue.textContent = "400px";
+  const delBtn = document.createElement("button");
+  delBtn.textContent = "Delete Chart";
 
-  ["bar", "line"].forEach(t => {
-    typeSelect.add(new Option(t.toUpperCase(), t));
-  });
-
+  ["bar", "line"].forEach(t => typeSelect.add(new Option(t.toUpperCase(), t)));
   cachedData.headers.forEach((h, i) => {
     xSelect.add(new Option("X: " + h, i));
     ySelect.add(new Option("Y: " + h, i));
   });
-
   ySelect.selectedIndex = 1;
 
-  const delBtn = document.createElement("button");
-  delBtn.textContent = "Delete Chart";
-
-  controls.append(xSelect, ySelect, typeSelect, delBtn);
+  controls.append(xSelect, ySelect, typeSelect, sizeSlider, sizeValue, delBtn);
   box.appendChild(controls);
 
   const container = document.createElement("div");
   container.className = "chart-container";
+  container.style.height = sizeSlider.value + "px";
 
   const canvas = document.createElement("canvas");
   container.appendChild(canvas);
   box.appendChild(container);
-
   document.getElementById("chartArea").appendChild(box);
 
   let chart = buildChart(canvas, xSelect.value, ySelect.value, typeSelect.value);
@@ -119,6 +93,11 @@ function createChartBox() {
   xSelect.onchange = rebuild;
   ySelect.onchange = rebuild;
   typeSelect.onchange = rebuild;
+  sizeSlider.oninput = () => {
+    container.style.height = sizeSlider.value + "px";
+    sizeValue.textContent = sizeSlider.value + "px";
+    chart.resize();
+  };
 
   delBtn.onclick = () => {
     chart.destroy();
@@ -143,13 +122,7 @@ function buildChart(canvas, xIndex, yIndex, type) {
         tension: 0.3
       }]
     },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      scales: {
-        y: { beginAtZero: true }
-      }
-    }
+    options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true } } }
   });
 }
 
