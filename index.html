@@ -15,29 +15,25 @@
       text-align: center;
     }
 
-    .controls {
+    button, select {
+      padding: 5px 8px;
+      margin: 4px;
+    }
+
+    .global-controls {
       text-align: center;
       margin-bottom: 20px;
     }
 
-    select, button, input[type=range] {
-      margin: 6px;
-      padding: 6px 10px;
-    }
-
-    .chart-wrapper {
-      max-width: 1200px;
-      margin: auto;
-    }
-
     .chart-box {
       border: 1px solid #ccc;
-      margin: 30px 0;
       padding: 10px;
+      margin: 30px 0;
     }
 
-    .chart-header {
-      text-align: right;
+    .chart-controls {
+      text-align: center;
+      margin-bottom: 10px;
     }
 
     .chart-container {
@@ -56,77 +52,56 @@
 
 <h2>Form Data Dashboard</h2>
 
-<div class="controls">
-  <label>X-axis:</label>
-  <select id="xSelect"></select>
-
-  <label>Y-axis:</label>
-  <select id="ySelect"></select>
-
-  <label>Chart Type:</label>
-  <select id="chartType">
-    <option value="bar">Bar</option>
-    <option value="line">Line</option>
-  </select>
-
+<div class="global-controls">
   <button id="addChartBtn">Add Chart</button>
   <button id="refreshBtn">Refresh Data</button>
 </div>
 
-<div class="controls">
-  <label>Chart Height:</label>
-  <input type="range" id="sizeSlider" min="250" max="800" value="400">
-  <span id="sizeValue">400px</span>
-</div>
-
-<div id="chartArea" class="chart-wrapper"></div>
+<div id="chartArea"></div>
 
 <script>
 const apiUrl = "https://script.google.com/macros/s/AKfycbyn27BCQpW5oMmQHPEnr9256TTiMP449DT1cq8Uz4vXXI335XBocCS2NYsf-3lXVVG0AQ/exec";
 
 let cachedData = null;
-let charts = [];
 
 async function fetchData() {
   const res = await fetch(apiUrl);
   const data = await res.json();
   const headers = Object.keys(data[0]);
-  const dataRows = data.map(obj => Object.values(obj));
-  cachedData = { headers, dataRows };
-}
-
-function populateSelectors(headers) {
-  const x = document.getElementById("xSelect");
-  const y = document.getElementById("ySelect");
-
-  x.innerHTML = "";
-  y.innerHTML = "";
-
-  headers.forEach((h, i) => {
-    x.add(new Option(h, i));
-    y.add(new Option(h, i));
-  });
-
-  x.selectedIndex = 0;
-  y.selectedIndex = 1;
+  const rows = data.map(obj => Object.values(obj));
+  cachedData = { headers, rows };
 }
 
 function createChartBox() {
   const box = document.createElement("div");
   box.className = "chart-box";
 
-  const header = document.createElement("div");
-  header.className = "chart-header";
+  const controls = document.createElement("div");
+  controls.className = "chart-controls";
+
+  const xSelect = document.createElement("select");
+  const ySelect = document.createElement("select");
+  const typeSelect = document.createElement("select");
+
+  ["bar", "line"].forEach(t => {
+    typeSelect.add(new Option(t.toUpperCase(), t));
+  });
+
+  cachedData.headers.forEach((h, i) => {
+    xSelect.add(new Option("X: " + h, i));
+    ySelect.add(new Option("Y: " + h, i));
+  });
+
+  ySelect.selectedIndex = 1;
 
   const delBtn = document.createElement("button");
   delBtn.textContent = "Delete Chart";
 
-  header.appendChild(delBtn);
-  box.appendChild(header);
+  controls.append(xSelect, ySelect, typeSelect, delBtn);
+  box.appendChild(controls);
 
   const container = document.createElement("div");
   container.className = "chart-container";
-  container.style.height = document.getElementById("sizeSlider").value + "px";
 
   const canvas = document.createElement("canvas");
   container.appendChild(canvas);
@@ -134,32 +109,33 @@ function createChartBox() {
 
   document.getElementById("chartArea").appendChild(box);
 
-  const chart = buildChart(canvas);
-  charts.push({ chart, container, box });
+  let chart = buildChart(canvas, xSelect.value, ySelect.value, typeSelect.value);
+
+  function rebuild() {
+    chart.destroy();
+    chart = buildChart(canvas, xSelect.value, ySelect.value, typeSelect.value);
+  }
+
+  xSelect.onchange = rebuild;
+  ySelect.onchange = rebuild;
+  typeSelect.onchange = rebuild;
 
   delBtn.onclick = () => {
     chart.destroy();
     box.remove();
-    charts = charts.filter(c => c.chart !== chart);
   };
 }
 
-function buildChart(canvas) {
-  const { headers, dataRows } = cachedData;
-
-  const xIndex = document.getElementById("xSelect").value;
-  const yIndex = document.getElementById("ySelect").value;
-  const type = document.getElementById("chartType").value;
-
-  const labels = dataRows.map(r => r[xIndex]);
-  const values = dataRows.map(r => parseFloat(r[yIndex]) || 0);
+function buildChart(canvas, xIndex, yIndex, type) {
+  const labels = cachedData.rows.map(r => r[xIndex]);
+  const values = cachedData.rows.map(r => parseFloat(r[yIndex]) || 0);
 
   return new Chart(canvas.getContext("2d"), {
     type,
     data: {
       labels,
       datasets: [{
-        label: headers[yIndex],
+        label: cachedData.headers[yIndex],
         data: values,
         backgroundColor: "rgba(54,162,235,0.5)",
         borderColor: "rgba(54,162,235,1)",
@@ -177,33 +153,16 @@ function buildChart(canvas) {
   });
 }
 
-function rebuildAllCharts() {
-  charts.forEach(c => c.chart.destroy());
-  const boxes = charts.map(c => c.box);
-  charts = [];
-  boxes.forEach(b => b.remove());
-  createChartBox();
-}
-
 document.getElementById("addChartBtn").onclick = createChartBox;
 
 document.getElementById("refreshBtn").onclick = async () => {
   await fetchData();
-  rebuildAllCharts();
-};
-
-document.getElementById("chartType").onchange = rebuildAllCharts;
-document.getElementById("xSelect").onchange = rebuildAllCharts;
-document.getElementById("ySelect").onchange = rebuildAllCharts;
-
-document.getElementById("sizeSlider").oninput = (e) => {
-  document.getElementById("sizeValue").textContent = e.target.value + "px";
-  charts.forEach(c => c.container.style.height = e.target.value + "px");
+  document.getElementById("chartArea").innerHTML = "";
+  createChartBox();
 };
 
 async function init() {
   await fetchData();
-  populateSelectors(cachedData.headers);
   createChartBox();
 }
 
