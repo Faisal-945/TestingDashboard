@@ -27,13 +27,22 @@
 
     .chart-wrapper {
       max-width: 1200px;
-      margin: 30px auto;
+      margin: auto;
+    }
+
+    .chart-box {
+      border: 1px solid #ccc;
+      margin: 30px 0;
+      padding: 10px;
+    }
+
+    .chart-header {
+      text-align: right;
     }
 
     .chart-container {
       width: 100%;
       height: 400px;
-      margin-bottom: 40px;
     }
 
     canvas {
@@ -54,93 +63,108 @@
   <label>Y-axis:</label>
   <select id="ySelect"></select>
 
-  <label>Chart:</label>
+  <label>Chart Type:</label>
   <select id="chartType">
     <option value="bar">Bar</option>
     <option value="line">Line</option>
   </select>
 
+  <button id="addChartBtn">Add Chart</button>
   <button id="refreshBtn">Refresh Data</button>
-  <button id="addChartBtn">Add Another Chart</button>
 </div>
 
 <div class="controls">
   <label>Chart Height:</label>
-  <input type="range" id="sizeSlider" min="300" max="800" value="400">
+  <input type="range" id="sizeSlider" min="250" max="800" value="400">
   <span id="sizeValue">400px</span>
 </div>
 
-<div id="charts" class="chart-wrapper"></div>
+<div id="chartArea" class="chart-wrapper"></div>
 
 <script>
 const apiUrl = "https://script.google.com/macros/s/AKfycbyn27BCQpW5oMmQHPEnr9256TTiMP449DT1cq8Uz4vXXI335XBocCS2NYsf-3lXVVG0AQ/exec";
 
-let charts = [];
-let chartCount = 0;
 let cachedData = null;
+let charts = [];
 
 async function fetchData() {
   const res = await fetch(apiUrl);
   const data = await res.json();
-
   const headers = Object.keys(data[0]);
   const dataRows = data.map(obj => Object.values(obj));
-
   cachedData = { headers, dataRows };
-  return cachedData;
 }
 
 function populateSelectors(headers) {
-  const xSelect = document.getElementById('xSelect');
-  const ySelect = document.getElementById('ySelect');
+  const x = document.getElementById("xSelect");
+  const y = document.getElementById("ySelect");
 
-  xSelect.innerHTML = '';
-  ySelect.innerHTML = '';
+  x.innerHTML = "";
+  y.innerHTML = "";
 
   headers.forEach((h, i) => {
-    xSelect.add(new Option(h, i));
-    ySelect.add(new Option(h, i));
+    x.add(new Option(h, i));
+    y.add(new Option(h, i));
   });
 
-  xSelect.selectedIndex = 0;
-  ySelect.selectedIndex = 1;
+  x.selectedIndex = 0;
+  y.selectedIndex = 1;
 }
 
-function createChart() {
-  const container = document.createElement('div');
-  container.className = 'chart-container';
-  container.style.height = document.getElementById('sizeSlider').value + 'px';
+function createChartBox() {
+  const box = document.createElement("div");
+  box.className = "chart-box";
 
-  const canvas = document.createElement('canvas');
-  canvas.id = 'chart' + chartCount++;
+  const header = document.createElement("div");
+  header.className = "chart-header";
 
+  const delBtn = document.createElement("button");
+  delBtn.textContent = "Delete Chart";
+
+  header.appendChild(delBtn);
+  box.appendChild(header);
+
+  const container = document.createElement("div");
+  container.className = "chart-container";
+  container.style.height = document.getElementById("sizeSlider").value + "px";
+
+  const canvas = document.createElement("canvas");
   container.appendChild(canvas);
-  document.getElementById('charts').appendChild(container);
+  box.appendChild(container);
 
-  renderChart(canvas);
+  document.getElementById("chartArea").appendChild(box);
+
+  const chart = buildChart(canvas);
+  charts.push({ chart, container, box });
+
+  delBtn.onclick = () => {
+    chart.destroy();
+    box.remove();
+    charts = charts.filter(c => c.chart !== chart);
+  };
 }
 
-function renderChart(canvas) {
+function buildChart(canvas) {
   const { headers, dataRows } = cachedData;
 
-  const xIndex = document.getElementById('xSelect').value;
-  const yIndex = document.getElementById('ySelect').value;
-  const type = document.getElementById('chartType').value;
+  const xIndex = document.getElementById("xSelect").value;
+  const yIndex = document.getElementById("ySelect").value;
+  const type = document.getElementById("chartType").value;
 
   const labels = dataRows.map(r => r[xIndex]);
   const values = dataRows.map(r => parseFloat(r[yIndex]) || 0);
 
-  const chart = new Chart(canvas.getContext('2d'), {
+  return new Chart(canvas.getContext("2d"), {
     type,
     data: {
       labels,
       datasets: [{
         label: headers[yIndex],
         data: values,
-        tension: 0.3,
-        backgroundColor: 'rgba(54,162,235,0.5)',
-        borderColor: 'rgba(54,162,235,1)',
-        borderWidth: 2
+        backgroundColor: "rgba(54,162,235,0.5)",
+        borderColor: "rgba(54,162,235,1)",
+        borderWidth: 2,
+        tension: 0.3
       }]
     },
     options: {
@@ -151,37 +175,36 @@ function renderChart(canvas) {
       }
     }
   });
-
-  charts.push({ chart, container: canvas.parentElement });
 }
 
-function refreshCharts() {
+function rebuildAllCharts() {
   charts.forEach(c => c.chart.destroy());
+  const boxes = charts.map(c => c.box);
   charts = [];
-  document.getElementById('charts').innerHTML = '';
-  createChart();
+  boxes.forEach(b => b.remove());
+  createChartBox();
 }
 
-document.getElementById('refreshBtn').onclick = async () => {
+document.getElementById("addChartBtn").onclick = createChartBox;
+
+document.getElementById("refreshBtn").onclick = async () => {
   await fetchData();
-  refreshCharts();
+  rebuildAllCharts();
 };
 
-document.getElementById('addChartBtn').onclick = createChart;
+document.getElementById("chartType").onchange = rebuildAllCharts;
+document.getElementById("xSelect").onchange = rebuildAllCharts;
+document.getElementById("ySelect").onchange = rebuildAllCharts;
 
-document.getElementById('chartType').onchange = refreshCharts;
-document.getElementById('xSelect').onchange = refreshCharts;
-document.getElementById('ySelect').onchange = refreshCharts;
-
-document.getElementById('sizeSlider').oninput = (e) => {
-  document.getElementById('sizeValue').innerText = e.target.value + 'px';
-  charts.forEach(c => c.container.style.height = e.target.value + 'px');
+document.getElementById("sizeSlider").oninput = (e) => {
+  document.getElementById("sizeValue").textContent = e.target.value + "px";
+  charts.forEach(c => c.container.style.height = e.target.value + "px");
 };
 
 async function init() {
-  const { headers } = await fetchData();
-  populateSelectors(headers);
-  createChart();
+  await fetchData();
+  populateSelectors(cachedData.headers);
+  createChartBox();
 }
 
 init();
