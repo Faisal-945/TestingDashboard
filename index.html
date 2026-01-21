@@ -15,7 +15,7 @@
       border-radius: 8px;
       padding: 15px;
       margin: 25px auto;
-      max-width: 1100px;
+      max-width: 1200px;
     }
 
     .controls {
@@ -25,9 +25,10 @@
       margin-bottom: 10px;
     }
 
-    canvas {
-      display: block;
-      margin: 20px auto;
+    .chart-container {
+      position: relative;
+      height: 450px;   /* THIS controls size now */
+      width: 100%;
     }
 
     button { cursor: pointer; }
@@ -41,12 +42,13 @@
 <div id="charts"></div>
 
 <script>
-const apiUrl = "https://script.google.com/macros/s/AKfycbyn27BCQpW5oMmQHPEnr9256TTiMP449DT1cq8Uz4vXXI335XBocCS2NYsf-3lXVVG0AQ/exec";
+const apiUrl =
+  "https://script.google.com/macros/s/AKfycbyn27BCQpW5oMmQHPEnr9256TTiMP449DT1cq8Uz4vXXI335XBocCS2NYsf-3lXVVG0AQ/exec";
 
 let chartId = 0;
 const chartStates = new Map();
 
-/* ------------------ HELPERS ------------------ */
+/* ---------------- HELPERS ---------------- */
 function parseTimestamp(str) {
   if (!str) return null;
   const [date, time] = str.split(" ");
@@ -66,13 +68,14 @@ function isNumeric(data, key) {
   return true;
 }
 
-/* ------------------ CREATE CHART ------------------ */
+/* ---------------- CREATE ---------------- */
 async function addChart() {
   const data = await fetchData();
   const headers = Object.keys(data[0]);
-  const timestampKey = headers[0]; // assumes timestamp is first column
+  const timestampKey = headers[0]; // assumes first column is timestamp
 
   const id = ++chartId;
+
   const box = document.createElement("div");
   box.className = "chart-box";
   box.id = `chart-${id}`;
@@ -113,7 +116,9 @@ async function addChart() {
       <button class="delete">🗑 Delete</button>
     </div>
 
-    <canvas width="900" height="400"></canvas>
+    <div class="chart-container">
+      <canvas></canvas>
+    </div>
   `;
 
   document.getElementById("charts").appendChild(box);
@@ -127,7 +132,6 @@ async function addChart() {
     id,
     box,
     canvas: box.querySelector("canvas"),
-    ctx: box.querySelector("canvas").getContext("2d"),
     chart: null,
     timer: null,
     timestampKey
@@ -144,7 +148,7 @@ async function addChart() {
   rebuildChart(id);
 }
 
-/* ------------------ BUILD / REFRESH ------------------ */
+/* ---------------- BUILD ---------------- */
 async function rebuildChart(id) {
   const state = chartStates.get(id);
   if (!state) return;
@@ -169,28 +173,30 @@ async function rebuildChart(id) {
       }))
       .filter(p => p.x && !isNaN(p.y));
 
-    state.chart = new Chart(state.ctx, {
+    state.chart = new Chart(state.canvas, {
       type,
       data: {
         datasets: [{
           label: yKey,
           data: points,
-          borderWidth: 2,
-          fill: false
+          borderWidth: 2
         }]
       },
       options: {
-        responsive: false,
+        responsive: true,
+        maintainAspectRatio: false,
         scales: {
           x: {
             type: "time",
             time: {
-              tooltipFormat: "dd MMM HH:mm:ss",
-              displayFormats: {
-                second: "HH:mm:ss",
-                minute: "HH:mm",
-                hour: "dd MMM HH:mm"
-              }
+              tooltipFormat: "dd MMM yyyy HH:mm:ss"
+            },
+            ticks: {
+              callback: value =>
+                new Date(value).toLocaleTimeString([], {
+                  hour: "2-digit",
+                  minute: "2-digit"
+                })
             },
             title: { display: true, text: "Time" }
           },
@@ -213,7 +219,7 @@ async function rebuildChart(id) {
   }
 }
 
-/* ------------------ DELETE ------------------ */
+/* ---------------- DELETE ---------------- */
 function removeChart(id) {
   const state = chartStates.get(id);
   if (!state) return;
