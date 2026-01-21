@@ -52,10 +52,7 @@ const chartStates = new Map();
 function parseTimestamp(value) {
   if (!value) return null;
 
-  // ISO or JS-readable date
-  if (!isNaN(Date.parse(value))) {
-    return new Date(value);
-  }
+  if (!isNaN(Date.parse(value))) return new Date(value);
 
   // DD/MM/YYYY HH:mm:ss
   const [date, time] = value.split(" ");
@@ -75,19 +72,20 @@ function isNumeric(data, key) {
   return true;
 }
 
-/* ---------- CREATE ---------- */
+/* ---------- CREATE CHART ---------- */
 async function addChart() {
   const data = await fetchData();
   const headers = Object.keys(data[0]);
-  const timestampKey = headers.find(h =>
-  h.toLowerCase().includes("time") ||
-  h.toLowerCase().includes("date")
-);
 
-if (!timestampKey) {
-  alert("No timestamp column found!");
-  return;
-}
+  const timestampKey = headers.find(h =>
+    h.toLowerCase().includes("time") ||
+    h.toLowerCase().includes("date")
+  );
+
+  if (!timestampKey) {
+    alert("No timestamp column found!");
+    return;
+  }
 
   const id = ++chartId;
 
@@ -108,14 +106,14 @@ if (!timestampKey) {
         </select>
       </label>
 
-      <label>Points
-        <select class="limit">
-          <option>5</option>
-          <option selected>10</option>
-          <option>15</option>
-          <option>20</option>
-          <option>30</option>
-          <option>50</option>
+      <label>Show last
+        <input class="timeValue" type="number" value="60" min="1">
+      </label>
+
+      <label>Unit
+        <select class="timeUnit">
+          <option value="60000">Minutes</option>
+          <option value="3600000">Hours</option>
         </select>
       </label>
 
@@ -154,7 +152,7 @@ if (!timestampKey) {
 
   chartStates.set(id, state);
 
-  box.querySelectorAll("select").forEach(el =>
+  box.querySelectorAll("select, input").forEach(el =>
     el.addEventListener("change", () => rebuildChart(id))
   );
 
@@ -163,30 +161,38 @@ if (!timestampKey) {
   rebuildChart(id);
 }
 
-/* ---------- BUILD ---------- */
+/* ---------- BUILD / UPDATE ---------- */
 async function rebuildChart(id) {
   const state = chartStates.get(id);
   if (!state) return;
 
   if (state.timer) clearInterval(state.timer);
-  if (state.chart) state.chart.destroy();
 
   const box = state.box;
   const yKey = box.querySelector(".y").value;
   const type = box.querySelector(".type").value;
-  const limit = +box.querySelector(".limit").value;
+  const timeValue = +box.querySelector(".timeValue").value;
+  const timeUnit = +box.querySelector(".timeUnit").value;
   const refresh = +box.querySelector(".refresh").value;
+
+  const windowMs = timeValue * timeUnit;
 
   async function draw() {
     const raw = await fetchData();
+    const now = Date.now();
 
     const points = raw
       .map(r => ({
         x: parseTimestamp(r[state.timestampKey]),
         y: parseFloat(r[yKey])
       }))
-      .filter(p => p.x instanceof Date && !isNaN(p.y))
-      .slice(-limit);
+      .filter(p =>
+        p.x instanceof Date &&
+        !isNaN(p.y) &&
+        (now - p.x.getTime()) <= windowMs
+      );
+
+    if (state.chart) state.chart.destroy();
 
     state.chart = new Chart(state.canvas, {
       type,
@@ -203,12 +209,8 @@ async function rebuildChart(id) {
         scales: {
           x: {
             type: "time",
-            ticks: {
-              callback: v =>
-                new Date(v).toLocaleTimeString([], {
-                  hour: "2-digit",
-                  minute: "2-digit"
-                })
+            time: {
+              tooltipFormat: "HH:mm:ss"
             },
             title: { display: true, text: "Time" }
           },
@@ -242,4 +244,3 @@ function removeChart(id) {
 
 </body>
 </html>
-
