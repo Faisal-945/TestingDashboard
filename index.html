@@ -79,7 +79,15 @@ function isNumeric(data, key) {
 async function addChart() {
   const data = await fetchData();
   const headers = Object.keys(data[0]);
-  const timestampKey = headers[0];
+  const timestampKey = headers.find(h =>
+  h.toLowerCase().includes("time") ||
+  h.toLowerCase().includes("date")
+);
+
+if (!timestampKey) {
+  alert("No timestamp column found!");
+  return;
+}
 
   const id = ++chartId;
 
@@ -234,3 +242,4 @@ function removeChart(id) {
 
 </body>
 </html>
+
