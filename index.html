@@ -12,7 +12,7 @@
       border-radius: 8px;
       padding: 15px;
       margin: 25px auto;
-      max-width: 1000px;
+      max-width: 1100px;
     }
 
     .controls {
@@ -22,23 +22,12 @@
       margin-bottom: 10px;
     }
 
-    label {
-      font-size: 0.9em;
-    }
-
-    select, input[type="range"] {
-      width: 100%;
-    }
-
-    button {
-      padding: 6px;
-      cursor: pointer;
-    }
-
     canvas {
       display: block;
       margin: 20px auto;
     }
+
+    button { cursor: pointer; }
   </style>
 </head>
 <body>
@@ -51,121 +40,129 @@
 <script>
 const apiUrl = "https://script.google.com/macros/s/AKfycbyn27BCQpW5oMmQHPEnr9256TTiMP449DT1cq8Uz4vXXI335XBocCS2NYsf-3lXVVG0AQ/exec";
 
-let chartCounter = 0;
-const charts = new Map();
+let chartId = 0;
+const chartStates = new Map();
 
+/* ------------------ DATA ------------------ */
 async function fetchData() {
   const res = await fetch(apiUrl);
   return await res.json();
 }
 
-function isNumericColumn(data, key) {
+function isNumeric(data, key) {
   for (let i = 0; i < Math.min(5, data.length); i++) {
     if (isNaN(parseFloat(data[i][key]))) return false;
   }
   return true;
 }
 
+/* ------------------ CREATE ------------------ */
 async function addChart() {
   const data = await fetchData();
   const headers = Object.keys(data[0]);
+  const id = ++chartId;
 
-  const id = ++chartCounter;
   const box = document.createElement("div");
   box.className = "chart-box";
-  box.id = `chartBox-${id}`;
+  box.id = `chart-${id}`;
 
   box.innerHTML = `
     <div class="controls">
-      <label>X-axis
-        <select id="x-${id}"></select>
+      <label>X
+        <select class="x"></select>
       </label>
 
-      <label>Y-axis
-        <select id="y-${id}"></select>
+      <label>Y
+        <select class="y"></select>
       </label>
 
-      <label>Chart Type
-        <select id="type-${id}">
+      <label>Type
+        <select class="type">
           <option value="bar">Bar</option>
           <option value="line">Line</option>
         </select>
       </label>
 
-      <label>Data Points
-        <select id="limit-${id}">
+      <label>Points
+        <select class="limit">
           <option>5</option>
           <option selected>10</option>
           <option>15</option>
           <option>20</option>
-          <option>25</option>
           <option>30</option>
-          <option>40</option>
           <option>50</option>
         </select>
       </label>
 
-      <label>Refresh Rate
-        <select id="refresh-${id}">
+      <label>Refresh
+        <select class="refresh">
           <option value="0">Off</option>
-          <option value="5000">5 sec</option>
-          <option value="10000">10 sec</option>
-          <option value="30000">30 sec</option>
+          <option value="5000">5s</option>
+          <option value="10000">10s</option>
+          <option value="30000">30s</option>
         </select>
       </label>
 
-      <label>Chart Size
-        <input type="range" min="300" max="900" value="500" id="size-${id}">
+      <label>Size
+        <input type="range" class="size" min="400" max="900" value="600">
       </label>
 
-      <button onclick="deleteChart(${id})">🗑 Delete</button>
+      <button class="delete">🗑 Delete</button>
     </div>
 
-    <canvas id="canvas-${id}" width="500" height="300"></canvas>
+    <canvas></canvas>
   `;
 
   document.getElementById("charts").appendChild(box);
 
-  const xSel = box.querySelector(`#x-${id}`);
-  const ySel = box.querySelector(`#y-${id}`);
+  const xSel = box.querySelector(".x");
+  const ySel = box.querySelector(".y");
 
   headers.forEach(h => {
     xSel.add(new Option(h, h));
-    if (isNumericColumn(data, h)) {
-      ySel.add(new Option(h, h));
-    }
+    if (isNumeric(data, h)) ySel.add(new Option(h, h));
   });
 
-  const ctx = box.querySelector("canvas").getContext("2d");
-  const chart = new Chart(ctx, {
-    type: "bar",
-    data: { labels: [], datasets: [{ label: "", data: [] }] },
-    options: { responsive: false }
+  const canvas = box.querySelector("canvas");
+  const ctx = canvas.getContext("2d");
+
+  const state = {
+    id,
+    box,
+    canvas,
+    ctx,
+    chart: null,
+    timer: null,
+    width: 600,
+    height: 360
+  };
+
+  chartStates.set(id, state);
+
+  box.querySelectorAll("select").forEach(el =>
+    el.addEventListener("change", () => rebuildChart(id))
+  );
+
+  box.querySelector(".size").addEventListener("input", e => {
+    state.width = e.target.value;
+    state.height = state.width * 0.6;
+    applySize(state);
   });
 
-  charts.set(id, { chart, timer: null });
+  box.querySelector(".delete").onclick = () => removeChart(id);
 
-  [
-    `x-${id}`, `y-${id}`, `type-${id}`,
-    `limit-${id}`, `refresh-${id}`
-  ].forEach(cid => {
-    box.querySelector(`#${cid}`).addEventListener("change", () => updateChart(id));
-  });
-
-  box.querySelector(`#size-${id}`).addEventListener("input", e => {
-    const size = e.target.value;
-    const canvas = box.querySelector("canvas");
-    canvas.width = size;
-    canvas.height = size * 0.6;
-    chart.resize();
-  });
-
-  updateChart(id);
+  rebuildChart(id);
 }
 
-async function updateChart(id) {
-  const box = document.getElementById(`chartBox-${id}`);
-  const state = charts.get(id);
+/* ------------------ CHART ------------------ */
+function applySize(state) {
+  state.canvas.width = state.width;
+  state.canvas.height = state.height;
+  if (state.chart) state.chart.resize();
+}
+
+async function rebuildChart(id) {
+  const state = chartStates.get(id);
   if (!state) return;
 
   if (state.timer) {
@@ -173,39 +170,59 @@ async function updateChart(id) {
     state.timer = null;
   }
 
-  const xKey = box.querySelector(`#x-${id}`).value;
-  const yKey = box.querySelector(`#y-${id}`).value;
-  const type = box.querySelector(`#type-${id}`).value;
-  const limit = parseInt(box.querySelector(`#limit-${id}`).value);
-  const refresh = parseInt(box.querySelector(`#refresh-${id}`).value);
+  if (state.chart) {
+    state.chart.destroy();
+    state.chart = null;
+  }
 
-  const redraw = async () => {
+  applySize(state);
+
+  const box = state.box;
+  const xKey = box.querySelector(".x").value;
+  const yKey = box.querySelector(".y").value;
+  const type = box.querySelector(".type").value;
+  const limit = +box.querySelector(".limit").value;
+  const refresh = +box.querySelector(".refresh").value;
+
+  async function draw() {
     const data = await fetchData();
     const sliced = data.slice(-limit);
 
-    state.chart.config.type = type;
-    state.chart.data.labels = sliced.map(r => r[xKey]);
-    state.chart.data.datasets[0].label = yKey;
-    state.chart.data.datasets[0].data = sliced.map(r => parseFloat(r[yKey]) || 0);
-    state.chart.update();
-  };
+    state.chart = new Chart(state.ctx, {
+      type,
+      data: {
+        labels: sliced.map(r => r[xKey]),
+        datasets: [{
+          label: yKey,
+          data: sliced.map(r => parseFloat(r[yKey]) || 0)
+        }]
+      },
+      options: {
+        responsive: false,
+        scales: { y: { beginAtZero: true } }
+      }
+    });
+  }
 
-  await redraw();
+  await draw();
 
   if (refresh > 0) {
-    state.timer = setInterval(redraw, refresh);
+    state.timer = setInterval(async () => {
+      if (state.chart) state.chart.destroy();
+      await draw();
+    }, refresh);
   }
 }
 
-function deleteChart(id) {
-  const state = charts.get(id);
+/* ------------------ DELETE ------------------ */
+function removeChart(id) {
+  const state = chartStates.get(id);
   if (!state) return;
 
   if (state.timer) clearInterval(state.timer);
-  state.chart.destroy();
-  charts.delete(id);
-
-  document.getElementById(`chartBox-${id}`).remove();
+  if (state.chart) state.chart.destroy();
+  state.box.remove();
+  chartStates.delete(id);
 }
 </script>
 
