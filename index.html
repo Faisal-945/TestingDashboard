@@ -1,8 +1,11 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Dynamic Form Dashboard</title>
+  <title>Form Data Dashboard</title>
+
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
+
   <style>
     body { font-family: Arial; margin: 30px; }
     h2 { text-align: center; }
@@ -43,7 +46,14 @@ const apiUrl = "https://script.google.com/macros/s/AKfycbyn27BCQpW5oMmQHPEnr9256
 let chartId = 0;
 const chartStates = new Map();
 
-/* ------------------ DATA ------------------ */
+/* ------------------ HELPERS ------------------ */
+function parseTimestamp(str) {
+  if (!str) return null;
+  const [date, time] = str.split(" ");
+  const [d, m, y] = date.split("/");
+  return new Date(`${y}-${m}-${d}T${time}`);
+}
+
 async function fetchData() {
   const res = await fetch(apiUrl);
   return await res.json();
@@ -56,30 +66,27 @@ function isNumeric(data, key) {
   return true;
 }
 
-/* ------------------ CREATE ------------------ */
+/* ------------------ CREATE CHART ------------------ */
 async function addChart() {
   const data = await fetchData();
   const headers = Object.keys(data[0]);
-  const id = ++chartId;
+  const timestampKey = headers[0]; // assumes timestamp is first column
 
+  const id = ++chartId;
   const box = document.createElement("div");
   box.className = "chart-box";
   box.id = `chart-${id}`;
 
   box.innerHTML = `
     <div class="controls">
-      <label>X
-        <select class="x"></select>
-      </label>
-
-      <label>Y
+      <label>Y-axis
         <select class="y"></select>
       </label>
 
-      <label>Type
+      <label>Chart Type
         <select class="type">
-          <option value="bar">Bar</option>
           <option value="line">Line</option>
+          <option value="bar">Bar</option>
         </select>
       </label>
 
@@ -103,38 +110,27 @@ async function addChart() {
         </select>
       </label>
 
-      <label>Size
-        <input type="range" class="size" min="400" max="900" value="600">
-      </label>
-
       <button class="delete">🗑 Delete</button>
     </div>
 
-    <canvas></canvas>
+    <canvas width="900" height="400"></canvas>
   `;
 
   document.getElementById("charts").appendChild(box);
 
-  const xSel = box.querySelector(".x");
   const ySel = box.querySelector(".y");
-
   headers.forEach(h => {
-    xSel.add(new Option(h, h));
     if (isNumeric(data, h)) ySel.add(new Option(h, h));
   });
-
-  const canvas = box.querySelector("canvas");
-  const ctx = canvas.getContext("2d");
 
   const state = {
     id,
     box,
-    canvas,
-    ctx,
+    canvas: box.querySelector("canvas"),
+    ctx: box.querySelector("canvas").getContext("2d"),
     chart: null,
     timer: null,
-    width: 600,
-    height: 360
+    timestampKey
   };
 
   chartStates.set(id, state);
@@ -143,63 +139,66 @@ async function addChart() {
     el.addEventListener("change", () => rebuildChart(id))
   );
 
-  box.querySelector(".size").addEventListener("input", e => {
-    state.width = e.target.value;
-    state.height = state.width * 0.6;
-    applySize(state);
-  });
-
   box.querySelector(".delete").onclick = () => removeChart(id);
 
   rebuildChart(id);
 }
 
-/* ------------------ CHART ------------------ */
-function applySize(state) {
-  state.canvas.width = state.width;
-  state.canvas.height = state.height;
-  if (state.chart) state.chart.resize();
-}
-
+/* ------------------ BUILD / REFRESH ------------------ */
 async function rebuildChart(id) {
   const state = chartStates.get(id);
   if (!state) return;
 
-  if (state.timer) {
-    clearInterval(state.timer);
-    state.timer = null;
-  }
-
-  if (state.chart) {
-    state.chart.destroy();
-    state.chart = null;
-  }
-
-  applySize(state);
+  if (state.timer) clearInterval(state.timer);
+  if (state.chart) state.chart.destroy();
 
   const box = state.box;
-  const xKey = box.querySelector(".x").value;
   const yKey = box.querySelector(".y").value;
   const type = box.querySelector(".type").value;
   const limit = +box.querySelector(".limit").value;
   const refresh = +box.querySelector(".refresh").value;
 
   async function draw() {
-    const data = await fetchData();
-    const sliced = data.slice(-limit);
+    const raw = await fetchData();
+    const sliced = raw.slice(-limit);
+
+    const points = sliced
+      .map(r => ({
+        x: parseTimestamp(r[state.timestampKey]),
+        y: parseFloat(r[yKey])
+      }))
+      .filter(p => p.x && !isNaN(p.y));
 
     state.chart = new Chart(state.ctx, {
       type,
       data: {
-        labels: sliced.map(r => r[xKey]),
         datasets: [{
           label: yKey,
-          data: sliced.map(r => parseFloat(r[yKey]) || 0)
+          data: points,
+          borderWidth: 2,
+          fill: false
         }]
       },
       options: {
         responsive: false,
-        scales: { y: { beginAtZero: true } }
+        scales: {
+          x: {
+            type: "time",
+            time: {
+              tooltipFormat: "dd MMM HH:mm:ss",
+              displayFormats: {
+                second: "HH:mm:ss",
+                minute: "HH:mm",
+                hour: "dd MMM HH:mm"
+              }
+            },
+            title: { display: true, text: "Time" }
+          },
+          y: {
+            beginAtZero: true,
+            title: { display: true, text: yKey }
+          }
+        }
       }
     });
   }
