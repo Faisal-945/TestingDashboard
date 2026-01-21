@@ -1,145 +1,212 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-<meta charset="UTF-8">
-<title>Independent Charts Dashboard</title>
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<style>
-body {
-  font-family: Arial, sans-serif;
-  margin: 40px;
-}
-h2 { text-align: center; }
-.global-controls { text-align: center; margin-bottom: 20px; }
-button, select, input[type=range] { margin: 4px; padding: 5px; }
-.chart-wrapper { max-width: 1200px; margin: auto; }
-.chart-box { border: 1px solid #ccc; padding: 10px; margin: 30px 0; }
-.chart-controls { text-align: center; margin-bottom: 10px; }
-.chart-container { width: 100%; height: 400px; }
-canvas { width: 100% !important; height: 100% !important; }
-</style>
+  <title>Dynamic Form Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { font-family: Arial; margin: 30px; }
+    h2 { text-align: center; }
+
+    .chart-box {
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      padding: 15px;
+      margin: 25px auto;
+      max-width: 1000px;
+    }
+
+    .controls {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+
+    label {
+      font-size: 0.9em;
+    }
+
+    select, input[type="range"] {
+      width: 100%;
+    }
+
+    button {
+      padding: 6px;
+      cursor: pointer;
+    }
+
+    canvas {
+      display: block;
+      margin: 20px auto;
+    }
+  </style>
 </head>
 <body>
 
-<h2>Independent Charts Dashboard</h2>
+<h2>Form Data Dashboard</h2>
+<button onclick="addChart()">➕ Add Chart</button>
 
-<div class="global-controls">
-  <button id="addChartBtn">Add Chart</button>
-  <button id="refreshBtn">Refresh Data</button>
-</div>
-
-<div id="chartArea" class="chart-wrapper"></div>
+<div id="charts"></div>
 
 <script>
 const apiUrl = "https://script.google.com/macros/s/AKfycbyn27BCQpW5oMmQHPEnr9256TTiMP449DT1cq8Uz4vXXI335XBocCS2NYsf-3lXVVG0AQ/exec";
-let cachedData = null;
+
+let chartCounter = 0;
+const charts = new Map();
 
 async function fetchData() {
   const res = await fetch(apiUrl);
-  const data = await res.json();
-  const headers = Object.keys(data[0]);
-  const rows = data.map(obj => Object.values(obj));
-  cachedData = { headers, rows };
+  return await res.json();
 }
 
-function createChartBox() {
-  if (!cachedData) return;
+function isNumericColumn(data, key) {
+  for (let i = 0; i < Math.min(5, data.length); i++) {
+    if (isNaN(parseFloat(data[i][key]))) return false;
+  }
+  return true;
+}
 
+async function addChart() {
+  const data = await fetchData();
+  const headers = Object.keys(data[0]);
+
+  const id = ++chartCounter;
   const box = document.createElement("div");
   box.className = "chart-box";
+  box.id = `chartBox-${id}`;
 
-  const controls = document.createElement("div");
-  controls.className = "chart-controls";
+  box.innerHTML = `
+    <div class="controls">
+      <label>X-axis
+        <select id="x-${id}"></select>
+      </label>
 
-  const xSelect = document.createElement("select");
-  const ySelect = document.createElement("select");
-  const typeSelect = document.createElement("select");
-  const sizeSlider = document.createElement("input");
-  sizeSlider.type = "range";
-  sizeSlider.min = 250;
-  sizeSlider.max = 800;
-  sizeSlider.value = 400;
-  const sizeValue = document.createElement("span");
-  sizeValue.textContent = "400px";
-  const delBtn = document.createElement("button");
-  delBtn.textContent = "Delete Chart";
+      <label>Y-axis
+        <select id="y-${id}"></select>
+      </label>
 
-  ["bar", "line"].forEach(t => typeSelect.add(new Option(t.toUpperCase(), t)));
-  cachedData.headers.forEach((h, i) => {
-    xSelect.add(new Option("X: " + h, i));
-    ySelect.add(new Option("Y: " + h, i));
+      <label>Chart Type
+        <select id="type-${id}">
+          <option value="bar">Bar</option>
+          <option value="line">Line</option>
+        </select>
+      </label>
+
+      <label>Data Points
+        <select id="limit-${id}">
+          <option>5</option>
+          <option selected>10</option>
+          <option>15</option>
+          <option>20</option>
+          <option>25</option>
+          <option>30</option>
+          <option>40</option>
+          <option>50</option>
+        </select>
+      </label>
+
+      <label>Refresh Rate
+        <select id="refresh-${id}">
+          <option value="0">Off</option>
+          <option value="5000">5 sec</option>
+          <option value="10000">10 sec</option>
+          <option value="30000">30 sec</option>
+        </select>
+      </label>
+
+      <label>Chart Size
+        <input type="range" min="300" max="900" value="500" id="size-${id}">
+      </label>
+
+      <button onclick="deleteChart(${id})">🗑 Delete</button>
+    </div>
+
+    <canvas id="canvas-${id}" width="500" height="300"></canvas>
+  `;
+
+  document.getElementById("charts").appendChild(box);
+
+  const xSel = box.querySelector(`#x-${id}`);
+  const ySel = box.querySelector(`#y-${id}`);
+
+  headers.forEach(h => {
+    xSel.add(new Option(h, h));
+    if (isNumericColumn(data, h)) {
+      ySel.add(new Option(h, h));
+    }
   });
-  ySelect.selectedIndex = 1;
 
-  controls.append(xSelect, ySelect, typeSelect, sizeSlider, sizeValue, delBtn);
-  box.appendChild(controls);
+  const ctx = box.querySelector("canvas").getContext("2d");
+  const chart = new Chart(ctx, {
+    type: "bar",
+    data: { labels: [], datasets: [{ label: "", data: [] }] },
+    options: { responsive: false }
+  });
 
-  const container = document.createElement("div");
-  container.className = "chart-container";
-  container.style.height = sizeSlider.value + "px";
+  charts.set(id, { chart, timer: null });
 
-  const canvas = document.createElement("canvas");
-  container.appendChild(canvas);
-  box.appendChild(container);
-  document.getElementById("chartArea").appendChild(box);
+  [
+    `x-${id}`, `y-${id}`, `type-${id}`,
+    `limit-${id}`, `refresh-${id}`
+  ].forEach(cid => {
+    box.querySelector(`#${cid}`).addEventListener("change", () => updateChart(id));
+  });
 
-  let chart = buildChart(canvas, xSelect.value, ySelect.value, typeSelect.value);
+  box.querySelector(`#size-${id}`).addEventListener("input", e => {
+    const size = e.target.value;
+    const canvas = box.querySelector("canvas");
+    canvas.width = size;
+    canvas.height = size * 0.6;
+    chart.resize();
+  });
 
-  function rebuild() {
-    chart.destroy();
-    chart = buildChart(canvas, xSelect.value, ySelect.value, typeSelect.value);
+  updateChart(id);
+}
+
+async function updateChart(id) {
+  const box = document.getElementById(`chartBox-${id}`);
+  const state = charts.get(id);
+  if (!state) return;
+
+  if (state.timer) {
+    clearInterval(state.timer);
+    state.timer = null;
   }
 
-  xSelect.onchange = rebuild;
-  ySelect.onchange = rebuild;
-  typeSelect.onchange = rebuild;
-  sizeSlider.oninput = () => {
-    container.style.height = sizeSlider.value + "px";
-    sizeValue.textContent = sizeSlider.value + "px";
-    chart.resize();
+  const xKey = box.querySelector(`#x-${id}`).value;
+  const yKey = box.querySelector(`#y-${id}`).value;
+  const type = box.querySelector(`#type-${id}`).value;
+  const limit = parseInt(box.querySelector(`#limit-${id}`).value);
+  const refresh = parseInt(box.querySelector(`#refresh-${id}`).value);
+
+  const redraw = async () => {
+    const data = await fetchData();
+    const sliced = data.slice(-limit);
+
+    state.chart.config.type = type;
+    state.chart.data.labels = sliced.map(r => r[xKey]);
+    state.chart.data.datasets[0].label = yKey;
+    state.chart.data.datasets[0].data = sliced.map(r => parseFloat(r[yKey]) || 0);
+    state.chart.update();
   };
 
-  delBtn.onclick = () => {
-    chart.destroy();
-    box.remove();
-  };
+  await redraw();
+
+  if (refresh > 0) {
+    state.timer = setInterval(redraw, refresh);
+  }
 }
 
-function buildChart(canvas, xIndex, yIndex, type) {
-  const labels = cachedData.rows.map(r => r[xIndex]);
-  const values = cachedData.rows.map(r => parseFloat(r[yIndex]) || 0);
+function deleteChart(id) {
+  const state = charts.get(id);
+  if (!state) return;
 
-  return new Chart(canvas.getContext("2d"), {
-    type,
-    data: {
-      labels,
-      datasets: [{
-        label: cachedData.headers[yIndex],
-        data: values,
-        backgroundColor: "rgba(54,162,235,0.5)",
-        borderColor: "rgba(54,162,235,1)",
-        borderWidth: 2,
-        tension: 0.3
-      }]
-    },
-    options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true } } }
-  });
+  if (state.timer) clearInterval(state.timer);
+  state.chart.destroy();
+  charts.delete(id);
+
+  document.getElementById(`chartBox-${id}`).remove();
 }
-
-document.getElementById("addChartBtn").onclick = createChartBox;
-
-document.getElementById("refreshBtn").onclick = async () => {
-  await fetchData();
-  document.getElementById("chartArea").innerHTML = "";
-  createChartBox();
-};
-
-async function init() {
-  await fetchData();
-  createChartBox();
-}
-
-init();
 </script>
 
 </body>
